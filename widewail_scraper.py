@@ -31,38 +31,64 @@ def login(driver):
     print("Logging into Widewail...")
     driver.get("https://apps.widewail.com/login")
     wait = WebDriverWait(driver, 20)
-    time.sleep(3)
+    time.sleep(4)
 
     try:
-        # Step 1: Enter email and click Continue
+        # Step 1: Find email field and type using JavaScript
         print("Step 1: Entering email...")
         email_field = wait.until(EC.presence_of_element_located(
-            (By.XPATH, "//input[@type='text' or @type='email']")
+            (By.XPATH, "//input")
         ))
+
+        # Click it first via JavaScript, then send keys
+        driver.execute_script("arguments[0].click(); arguments[0].focus();", email_field)
+        time.sleep(1)
         email_field.clear()
-        email_field.send_keys(WIDEWAIL_EMAIL)
+        time.sleep(0.5)
 
+        # Type character by character to bypass JS input blocking
+        from selenium.webdriver.common.action_chains import ActionChains
+        actions = ActionChains(driver)
+        actions.click(email_field)
+        actions.send_keys(WIDEWAIL_EMAIL)
+        actions.perform()
+        time.sleep(1)
+
+        driver.save_screenshot("/tmp/debug_screenshot.png")
+        print("Email entered — screenshot saved.")
+
+        # Click Continue
         continue_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//button[contains(translate(text(),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ'),'CONTINUE') or contains(text(),'Continue') or contains(text(),'Next')]")
+            (By.XPATH, "//button")
         ))
-        continue_btn.click()
+        driver.execute_script("arguments[0].click();", continue_btn)
         print("Clicked Continue.")
-        time.sleep(3)
+        time.sleep(4)
 
-        # Step 2: Enter password and submit
+        driver.save_screenshot("/tmp/debug_screenshot.png")
+        print(f"After continue URL: {driver.current_url}")
+
+        # Step 2: Enter password
         print("Step 2: Entering password...")
         password_field = wait.until(EC.presence_of_element_located(
             (By.XPATH, "//input[@type='password']")
         ))
-        password_field.clear()
-        password_field.send_keys(WIDEWAIL_PASSWORD)
+        driver.execute_script("arguments[0].click(); arguments[0].focus();", password_field)
+        time.sleep(0.5)
 
+        actions2 = ActionChains(driver)
+        actions2.click(password_field)
+        actions2.send_keys(WIDEWAIL_PASSWORD)
+        actions2.perform()
+        time.sleep(1)
+
+        # Click submit
         submit_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//button[@type='submit' or contains(translate(text(),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ'),'CONTINUE') or contains(text(),'Sign in') or contains(text(),'Log in')]")
+            (By.XPATH, "//button[@type='submit' or contains(text(),'Continue') or contains(text(),'Sign') or contains(text(),'Log')]")
         ))
-        submit_btn.click()
+        driver.execute_script("arguments[0].click();", submit_btn)
         print("Clicked submit.")
-        time.sleep(5)
+        time.sleep(6)
 
         driver.save_screenshot("/tmp/debug_screenshot.png")
         print(f"After login URL: {driver.current_url}")
