@@ -98,33 +98,28 @@ def get_enterprise_reviews(token):
     return all_stores
 
 
-def parse_stores(data):
+def parse_stores(all_rows):
     stores = []
-    if not data:
+    if not all_rows:
         return stores
 
-    # Widewail structure: _embedded -> rows -> each row has label + columns
     try:
-        rows = data.get("_embedded", {}).get("rows", [])
-        print(f"Found {len(rows)} rows in _embedded.rows")
-
-        for row in rows:
+        for row in all_rows:
             name    = row.get("label", "Unknown")
             columns = row.get("columns", [])
 
-            # columns is a list — first column has totalReviews and rating
             reviews = "N/A"
             rating  = "N/A"
 
-            if columns:
-                col = columns[0]
+            # columns is a list of dicts — find the right one
+            if isinstance(columns, list) and len(columns) > 0:
+                col = columns[0]  # First column has the main data
                 reviews = col.get("totalReviews", "N/A")
-                rating  = col.get("rating", "N/A")
-                # Round rating to 1 decimal if it's a number
+                raw_rating = col.get("rating", "N/A")
                 try:
-                    rating = round(float(rating), 1)
+                    rating = round(float(raw_rating), 1)
                 except:
-                    pass
+                    rating = raw_rating
 
             print(f"Store: {name} | Reviews: {reviews} | Rating: {rating}")
             stores.append({
