@@ -135,34 +135,32 @@ def set_mtd_date_filter(driver):
 
 
 def scrape_store_data(driver):
-    print("Waiting for data to load...")
-    time.sleep(8)  # Give React extra time to render
+    print("Waiting for Enterprise Reviews data to load...")
+    print(f"Current URL: {driver.current_url}")
 
-    # Save screenshot
+    # Take screenshot NOW — this is the Enterprise Reviews page
     driver.save_screenshot("/tmp/debug_screenshot.png")
     print("Screenshot saved.")
+
+    # Wait longer for React to fully render the table
+    time.sleep(15)
+
+    # Take another screenshot after waiting
+    driver.save_screenshot("/tmp/debug_screenshot.png")
+    print("Second screenshot saved after wait.")
 
     stores = []
 
     try:
-        # Check if we got redirected to login (session expired)
-        if "login" in driver.current_url:
-            print("ERROR: Redirected to login — session not maintained.")
-            return stores
-
-        print(f"Current URL: {driver.current_url}")
         print(f"Page title: {driver.title}")
-
-        # Wait for ANY table or grid to appear
-        wait = WebDriverWait(driver, 30)
+        print(f"Current URL after wait: {driver.current_url}")
 
         # Try multiple possible table/grid selectors Widewail might use
         selectors = [
             "//table//tbody//tr",
-            "//div[contains(@class,'ag-row')]",          # AG Grid (common in React apps)
-            "//div[contains(@class,'row') and contains(@class,'data')]",
+            "//div[contains(@class,'ag-row')]",
+            "//*[@role='row']",
             "//tr[contains(@class,'row')]",
-            "//*[@role='row']",                           # ARIA role rows
             "//div[contains(@class,'table')]//div[contains(@class,'row')]",
         ]
 
@@ -174,21 +172,21 @@ def scrape_store_data(driver):
                     print(f"Found {len(found)} rows with selector: {selector}")
                     rows = found
                     break
-            except:
-                continue
+                else:
+                    print(f"0 rows with selector: {selector}")
+            except Exception as sel_err:
+                print(f"Selector error {selector}: {sel_err}")
 
         if not rows:
-            print("No rows found with any selector.")
-            print(f"Page source preview:\n{driver.page_source[:3000]}")
+            print("No rows found — printing page source...")
+            print(driver.page_source[:5000])
             return stores
 
         for row in rows:
             try:
-                # Try to get all text cells in the row
-                cells = row.find_elements(By.XPATH, ".//td | .//div[@role='gridcell'] | .//span[@class]")
+                cells = row.find_elements(By.XPATH, ".//td | .//div[@role='gridcell']")
                 texts = [c.text.strip() for c in cells if c.text.strip()]
                 print(f"Row texts: {texts}")
-
                 if len(texts) >= 2:
                     stores.append({
                         "store":      texts[0],
