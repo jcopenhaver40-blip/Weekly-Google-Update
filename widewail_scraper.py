@@ -29,7 +29,7 @@ def get_driver():
 
 def login(driver):
     print("Logging into Widewail...")
-    driver.get("https://app.widewail.com/login")
+    driver.get("https://apps.widewail.com/login")
     wait = WebDriverWait(driver, 20)
 
     wait.until(EC.presence_of_element_located((By.NAME, "email"))).send_keys(WIDEWAIL_EMAIL)
@@ -40,89 +40,81 @@ def login(driver):
 
 
 def navigate_to_enterprise_reviews(driver):
-    print("Navigating to Enterprise Reviews...")
-    wait = WebDriverWait(driver, 20)
+    print("Navigating to Enterprise Reviews with MTD date range...")
 
-    # Click the left nav dropdown that contains Enterprise Reviews
-    try:
-        # Try to find and expand the dropdown in the left sidebar
-        nav_dropdown = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//a[contains(text(),'Enterprise') or contains(@href,'enterprise')]")
-        ))
-        nav_dropdown.click()
-        time.sleep(2)
+    today = datetime.now()
+    # First day of current month
+    start_date = today.replace(day=1).strftime("%Y-%m-%dT00:00:00.000-08:00")
+    # Today as end date
+    end_date = today.strftime("%Y-%m-%dT23:59:59.999-08:00")
 
-        reviews_link = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//a[contains(text(),'Reviews') and contains(@href,'enterprise')]")
-        ))
-        reviews_link.click()
-        time.sleep(3)
-    except Exception as e:
-        print(f"Navigation attempt 1 failed: {e}")
-        # Fallback: direct URL
-        driver.get("https://app.widewail.com/enterprise/reviews")
-        time.sleep(4)
+    from urllib.parse import quote
+    start_encoded = quote(start_date, safe="")
+    end_encoded   = quote(end_date, safe="")
 
-    print(f"Current URL: {driver.current_url}")
+    url = (
+        f"https://apps.widewail.com/report/enterprise"
+        f"?dateRange%5BstartDate%5D={start_encoded}"
+        f"&dateRange%5BendDate%5D={end_encoded}"
+        f"&sort=rowLabel%2Casc"
+        f"&report=OVERVIEW"
+        f"&compareMode=RELATIVE"
+        f"&c-OVERVIEW%5Blabel%5D=Location"
+        f"&c-OVERVIEW%5Blabel%5D=Total%20Reviews"
+        f"&c-OVERVIEW%5Blabel%5D=Rating"
+        f"&c-OVERVIEW%5Bhidden%5D=false"
+        f"&c-OVERVIEW%5Bhidden%5D=false"
+        f"&c-OVERVIEW%5Bhidden%5D=false"
+    )
+
+    driver.get(url)
+    time.sleep(5)
+    print(f"Navigated to: {driver.current_url}")
 
 
 def set_mtd_date_filter(driver):
-    print("Setting date filter to Month to Date...")
-    wait = WebDriverWait(driver, 20)
-
-    try:
-        # Look for a date range picker/dropdown
-        date_filter = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//button[contains(text(),'Date') or contains(text(),'date') or contains(@class,'date')]")
-        ))
-        date_filter.click()
-        time.sleep(1)
-
-        # Click "Month to Date" option
-        mtd_option = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//li[contains(text(),'Month to Date') or contains(text(),'MTD') or contains(text(),'This Month')]")
-        ))
-        mtd_option.click()
-        time.sleep(3)
-        print("Date set to Month to Date.")
-    except Exception as e:
-        print(f"Date filter warning: {e} — continuing with default date range.")
+    # Date is already set via URL — nothing to do here
+    print("Date range set via URL — skipping manual filter step.")
 
 
 def scrape_store_data(driver):
-    print("Scraping store data...")
-    wait = WebDriverWait(driver, 20)
-    time.sleep(3)
+    print("Waiting for data to load...")
+    wait = WebDriverWait(driver, 30)
+    time.sleep(6)  # Give the page extra time to render
 
     stores = []
 
     try:
-        # Wait for table rows to load
-        rows = wait.until(EC.presence_of_all_elements_located(
-            (By.XPATH, "//table//tbody//tr")
-        ))
+        # Save screenshot for debugging
+        driver.save_screenshot("/tmp/debug_screenshot.png")
+        print("Screenshot saved.")
 
+        # Try to find table rows
+        rows = driver.find_elements(By.XPATH, "//table//tbody//tr")
         print(f"Found {len(rows)} rows.")
 
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) >= 2:
                 store_name   = cols[0].text.strip()
-                review_count = cols[1].text.strip()
+                review_count = cols[1].text.strip() if len(cols) > 1 else "N/A"
                 avg_rating   = cols[2].text.strip() if len(cols) > 2 else "N/A"
 
-                if store_name:
+                if store_name and store_name != "":
                     stores.append({
                         "store":      store_name,
                         "reviews":    review_count,
                         "avg_rating": avg_rating
                     })
 
+        if not stores:
+            # Try alternative: look for any grid/list structure
+            print("No table rows found — trying alternative selectors...")
+            print(f"Page source preview: {driver.page_source[:2000]}")
+
     except Exception as e:
         print(f"Scraping error: {e}")
-        # Save screenshot for debugging
         driver.save_screenshot("/tmp/debug_screenshot.png")
-        print("Screenshot saved to /tmp/debug_screenshot.png")
 
     print(f"Scraped {len(stores)} stores.")
     return stores
