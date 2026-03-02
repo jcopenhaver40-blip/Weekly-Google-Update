@@ -84,7 +84,7 @@ def login(driver):
 
         # Click submit
         submit_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//button[@type='submit' or contains(text(),'Continue') or contains(text(),'Sign') or contains(text(),'Log')]")
+            (By.XPATH, "//button")
         ))
         driver.execute_script("arguments[0].click();", submit_btn)
         print("Clicked submit.")
