@@ -40,29 +40,21 @@ def login(driver):
             (By.XPATH, "//input")
         ))
 
-        # Click it first via JavaScript, then send keys
-        driver.execute_script("arguments[0].click(); arguments[0].focus();", email_field)
+        # Use JavaScript to set the value directly — most reliable method
+        driver.execute_script(
+            "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', { bubbles: true })); arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+            email_field, WIDEWAIL_EMAIL
+        )
         time.sleep(1)
-        email_field.clear()
-        time.sleep(0.5)
-
-        # Type character by character to bypass JS input blocking
-        from selenium.webdriver.common.action_chains import ActionChains
-        actions = ActionChains(driver)
-        actions.click(email_field)
-        actions.send_keys(WIDEWAIL_EMAIL)
-        actions.perform()
-        time.sleep(1)
+        print(f"Email set via JavaScript: {WIDEWAIL_EMAIL}")
 
         driver.save_screenshot("/tmp/debug_screenshot.png")
         print("Email entered — screenshot saved.")
 
-        # Click Continue
-        continue_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//button")
-        ))
-        driver.execute_script("arguments[0].click();", continue_btn)
-        print("Clicked Continue.")
+        # Press Enter to continue instead of clicking button
+        from selenium.webdriver.common.keys import Keys
+        email_field.send_keys(Keys.RETURN)
+        print("Pressed Enter after email.")
         time.sleep(4)
 
         driver.save_screenshot("/tmp/debug_screenshot.png")
