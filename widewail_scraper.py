@@ -68,14 +68,16 @@ def login(driver):
         password_field = wait.until(EC.presence_of_element_located(
             (By.XPATH, "//input[@type='password']")
         ))
-        driver.execute_script("arguments[0].click(); arguments[0].focus();", password_field)
-        time.sleep(0.5)
-
-        actions2 = ActionChains(driver)
-        actions2.click(password_field)
-        actions2.send_keys(WIDEWAIL_PASSWORD)
-        actions2.perform()
+        # Use React-compatible JS to set password
+        driver.execute_script("""
+            var input = arguments[0];
+            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeInputValueSetter.call(input, arguments[1]);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        """, password_field, WIDEWAIL_PASSWORD)
         time.sleep(1)
+        print("Password set via React-compatible JS.")
 
         # Click submit
         submit_btn = wait.until(EC.element_to_be_clickable(
