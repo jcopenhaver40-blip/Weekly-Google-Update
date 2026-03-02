@@ -136,38 +136,68 @@ def set_mtd_date_filter(driver):
 
 def scrape_store_data(driver):
     print("Waiting for data to load...")
-    wait = WebDriverWait(driver, 30)
-    time.sleep(6)  # Give the page extra time to render
+    time.sleep(8)  # Give React extra time to render
+
+    # Save screenshot
+    driver.save_screenshot("/tmp/debug_screenshot.png")
+    print("Screenshot saved.")
 
     stores = []
 
     try:
-        # Save screenshot for debugging
-        driver.save_screenshot("/tmp/debug_screenshot.png")
-        print("Screenshot saved.")
+        # Check if we got redirected to login (session expired)
+        if "login" in driver.current_url:
+            print("ERROR: Redirected to login — session not maintained.")
+            return stores
 
-        # Try to find table rows
-        rows = driver.find_elements(By.XPATH, "//table//tbody//tr")
-        print(f"Found {len(rows)} rows.")
+        print(f"Current URL: {driver.current_url}")
+        print(f"Page title: {driver.title}")
+
+        # Wait for ANY table or grid to appear
+        wait = WebDriverWait(driver, 30)
+
+        # Try multiple possible table/grid selectors Widewail might use
+        selectors = [
+            "//table//tbody//tr",
+            "//div[contains(@class,'ag-row')]",          # AG Grid (common in React apps)
+            "//div[contains(@class,'row') and contains(@class,'data')]",
+            "//tr[contains(@class,'row')]",
+            "//*[@role='row']",                           # ARIA role rows
+            "//div[contains(@class,'table')]//div[contains(@class,'row')]",
+        ]
+
+        rows = []
+        for selector in selectors:
+            try:
+                found = driver.find_elements(By.XPATH, selector)
+                if found:
+                    print(f"Found {len(found)} rows with selector: {selector}")
+                    rows = found
+                    break
+            except:
+                continue
+
+        if not rows:
+            print("No rows found with any selector.")
+            print(f"Page source preview:\n{driver.page_source[:3000]}")
+            return stores
 
         for row in rows:
-            cols = row.find_elements(By.TAG_NAME, "td")
-            if len(cols) >= 2:
-                store_name   = cols[0].text.strip()
-                review_count = cols[1].text.strip() if len(cols) > 1 else "N/A"
-                avg_rating   = cols[2].text.strip() if len(cols) > 2 else "N/A"
+            try:
+                # Try to get all text cells in the row
+                cells = row.find_elements(By.XPATH, ".//td | .//div[@role='gridcell'] | .//span[@class]")
+                texts = [c.text.strip() for c in cells if c.text.strip()]
+                print(f"Row texts: {texts}")
 
-                if store_name and store_name != "":
+                if len(texts) >= 2:
                     stores.append({
-                        "store":      store_name,
-                        "reviews":    review_count,
-                        "avg_rating": avg_rating
+                        "store":      texts[0],
+                        "reviews":    texts[1] if len(texts) > 1 else "N/A",
+                        "avg_rating": texts[2] if len(texts) > 2 else "N/A"
                     })
-
-        if not stores:
-            # Try alternative: look for any grid/list structure
-            print("No table rows found — trying alternative selectors...")
-            print(f"Page source preview: {driver.page_source[:2000]}")
+            except Exception as row_err:
+                print(f"Row error: {row_err}")
+                continue
 
     except Exception as e:
         print(f"Scraping error: {e}")
