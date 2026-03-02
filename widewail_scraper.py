@@ -33,71 +33,37 @@ def login(driver):
     wait = WebDriverWait(driver, 20)
     time.sleep(3)
 
-    # Save screenshot to see what login page looks like
-    driver.save_screenshot("/tmp/debug_screenshot.png")
-    print("Login page screenshot saved.")
-
     try:
-        # Try multiple selectors for email field
-        email_field = None
-        for selector in [
-            (By.NAME, "email"),
-            (By.NAME, "username"),
-            (By.ID, "email"),
-            (By.ID, "username"),
-            (By.XPATH, "//input[@type='email']"),
-            (By.XPATH, "//input[@placeholder and contains(translate(@placeholder,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'email')]"),
-        ]:
-            try:
-                email_field = wait.until(EC.presence_of_element_located(selector))
-                print(f"Found email field with selector: {selector}")
-                break
-            except:
-                continue
-
-        if not email_field:
-            print("Could not find email field — printing page source...")
-            print(driver.page_source[:3000])
-            raise Exception("Email field not found")
-
+        # Step 1: Enter email and click Continue
+        print("Step 1: Entering email...")
+        email_field = wait.until(EC.presence_of_element_located(
+            (By.XPATH, "//input[@type='text' or @type='email']")
+        ))
         email_field.clear()
         email_field.send_keys(WIDEWAIL_EMAIL)
 
-        # Try multiple selectors for password field
-        password_field = None
-        for selector in [
-            (By.NAME, "password"),
-            (By.ID, "password"),
-            (By.XPATH, "//input[@type='password']"),
-        ]:
-            try:
-                password_field = driver.find_element(*selector)
-                print(f"Found password field with selector: {selector}")
-                break
-            except:
-                continue
+        continue_btn = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//button[contains(translate(text(),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ'),'CONTINUE') or contains(text(),'Continue') or contains(text(),'Next')]")
+        ))
+        continue_btn.click()
+        print("Clicked Continue.")
+        time.sleep(3)
 
-        if not password_field:
-            raise Exception("Password field not found")
-
+        # Step 2: Enter password and submit
+        print("Step 2: Entering password...")
+        password_field = wait.until(EC.presence_of_element_located(
+            (By.XPATH, "//input[@type='password']")
+        ))
         password_field.clear()
         password_field.send_keys(WIDEWAIL_PASSWORD)
 
-        # Try multiple selectors for submit button
-        for selector in [
-            (By.XPATH, "//button[@type='submit']"),
-            (By.XPATH, "//button[contains(text(),'Sign in') or contains(text(),'Log in') or contains(text(),'Login')]"),
-            (By.XPATH, "//input[@type='submit']"),
-        ]:
-            try:
-                btn = driver.find_element(*selector)
-                btn.click()
-                print(f"Clicked submit with selector: {selector}")
-                break
-            except:
-                continue
-
+        submit_btn = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//button[@type='submit' or contains(translate(text(),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ'),'CONTINUE') or contains(text(),'Sign in') or contains(text(),'Log in')]")
+        ))
+        submit_btn.click()
+        print("Clicked submit.")
         time.sleep(5)
+
         driver.save_screenshot("/tmp/debug_screenshot.png")
         print(f"After login URL: {driver.current_url}")
 
