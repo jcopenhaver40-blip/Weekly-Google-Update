@@ -1,0 +1,51 @@
+name: Weekly Google MTD Review Report
+
+on:
+  schedule:
+    # Every Tuesday at 7:00 AM Pacific (15:00 UTC)
+    - cron: "0 15 * * 2"
+  workflow_dispatch:  # Allows manual trigger for testing
+
+jobs:
+  send-review-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install ChromeDriver
+        run: |
+          pip install webdriver-manager
+          python -c "from webdriver_manager.chrome import ChromeDriverManager; ChromeDriverManager().install()"
+
+      - name: Run Widewail scraper and send email
+        env:
+          WIDEWAIL_EMAIL:    ${{ secrets.WIDEWAIL_EMAIL }}
+          WIDEWAIL_PASSWORD: ${{ secrets.WIDEWAIL_PASSWORD }}
+          SMTP_EMAIL:        ${{ secrets.SMTP_EMAIL }}
+          SMTP_PASSWORD:     ${{ secrets.SMTP_PASSWORD }}
+        run: python widewail_scraper.py
+
+      - name: Upload debug screenshot (if exists)
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug-screenshot
+          path: /tmp/debug_screenshot.png
+          if-no-files-found: ignore
