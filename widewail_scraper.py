@@ -40,13 +40,16 @@ def login(driver):
             (By.XPATH, "//input")
         ))
 
-        # Use JavaScript to set the value directly — most reliable method
-        driver.execute_script(
-            "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', { bubbles: true })); arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
-            email_field, WIDEWAIL_EMAIL
-        )
-        time.sleep(1)
-        print(f"Email set via JavaScript: {WIDEWAIL_EMAIL}")
+        # Use JavaScript to set value AND trigger React's synthetic events
+        driver.execute_script("""
+            var input = arguments[0];
+            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeInputValueSetter.call(input, arguments[1]);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        """, email_field, WIDEWAIL_EMAIL)
+        time.sleep(2)
+        print(f"Email set via React-compatible JS: {WIDEWAIL_EMAIL}")
 
         driver.save_screenshot("/tmp/debug_screenshot.png")
         print("Email entered — screenshot saved.")
