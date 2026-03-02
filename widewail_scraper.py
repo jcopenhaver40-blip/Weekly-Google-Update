@@ -76,16 +76,8 @@ def get_enterprise_reviews(token):
         data = r.json()
         print(f"Response preview: {json.dumps(data, indent=2)[:1000]}")
 
-        # Extract rows from response
-        rows = None
-        if isinstance(data, list):
-            rows = data
-        elif "content" in data:
-            rows = data["content"]
-        elif "data" in data:
-            rows = data["data"]
-        elif "rows" in data:
-            rows = data["rows"]
+        # Extract rows from _embedded.rows
+        rows = data.get("_embedded", {}).get("rows", [])
 
         if not rows:
             print("No rows found in response.")
@@ -93,41 +85,56 @@ def get_enterprise_reviews(token):
 
         all_stores.extend(rows)
 
-        # Check if there are more pages
-        if isinstance(data, dict):
-            total_pages = data.get("totalPages", 1)
-            if page + 1 >= total_pages:
-                break
-        else:
+        # Check pagination
+        page_info = data.get("page", {})
+        total_pages = page_info.get("totalPages", 1)
+        print(f"Page {page+1} of {total_pages}")
+        if page + 1 >= total_pages:
             break
 
         page += 1
 
-    print(f"Total stores fetched: {len(all_stores)}")
+    print(f"Total rows fetched: {len(all_stores)}")
     return all_stores
 
 
-def parse_stores(rows):
+def parse_stores(data):
     stores = []
-    if not rows:
+    if not data:
         return stores
 
-    for row in rows:
-        if isinstance(row, dict):
-            print(f"Row keys: {list(row.keys())}")
-            # Try common field names — we'll see what Widewail returns
-            name    = (row.get("rowLabel") or row.get("location") or
-                      row.get("name") or row.get("label") or "Unknown")
-            reviews = (row.get("totalReviews") or row.get("reviewCount") or
-                      row.get("reviews") or row.get("count") or "N/A")
-            rating  = (row.get("rating") or row.get("averageRating") or
-                      row.get("avgRating") or row.get("avg") or "N/A")
+    # Widewail structure: _embedded -> rows -> each row has label + columns
+    try:
+        rows = data.get("_embedded", {}).get("rows", [])
+        print(f"Found {len(rows)} rows in _embedded.rows")
 
+        for row in rows:
+            name    = row.get("label", "Unknown")
+            columns = row.get("columns", [])
+
+            # columns is a list — first column has totalReviews and rating
+            reviews = "N/A"
+            rating  = "N/A"
+
+            if columns:
+                col = columns[0]
+                reviews = col.get("totalReviews", "N/A")
+                rating  = col.get("rating", "N/A")
+                # Round rating to 1 decimal if it's a number
+                try:
+                    rating = round(float(rating), 1)
+                except:
+                    pass
+
+            print(f"Store: {name} | Reviews: {reviews} | Rating: {rating}")
             stores.append({
                 "store":      str(name),
                 "reviews":    str(reviews),
                 "avg_rating": str(rating)
             })
+
+    except Exception as e:
+        print(f"Parse error: {e}")
 
     print(f"Parsed {len(stores)} stores.")
     return stores
