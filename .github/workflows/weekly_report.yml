@@ -2,8 +2,8 @@ name: Weekly Google MTD Review Report
 
 on:
   schedule:
-   # Every Tuesday at 4:00 AM Pacific (~12:00 UTC)
-- cron: "0 12 * * 2"
+    # Every Tuesday at 4:00 AM Pacific (~12:00 UTC)
+    - cron: "0 12 * * 2"
   workflow_dispatch:  # Allows manual trigger for testing
 
 jobs:
