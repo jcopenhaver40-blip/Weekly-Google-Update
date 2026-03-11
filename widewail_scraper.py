@@ -76,17 +76,14 @@ def get_enterprise_reviews(token):
         data = r.json()
         print(f"Response preview: {json.dumps(data, indent=2)[:1000]}")
 
-        # Extract rows from _embedded.rows
         rows = data.get("_embedded", {}).get("rows", [])
-
         if not rows:
             print("No rows found in response.")
             break
 
         all_stores.extend(rows)
 
-        # Check pagination
-        page_info = data.get("page", {})
+        page_info   = data.get("page", {})
         total_pages = page_info.get("totalPages", 1)
         print(f"Page {page+1} of {total_pages}")
         if page + 1 >= total_pages:
@@ -111,9 +108,8 @@ def parse_stores(all_rows):
             reviews = "N/A"
             rating  = "N/A"
 
-            # columns is a list of dicts — find the right one
             if isinstance(columns, list) and len(columns) > 0:
-                col = columns[0]  # First column has the main data
+                col = columns[0]
                 reviews = col.get("totalReviews", "N/A")
                 raw_rating = col.get("rating", "N/A")
                 try:
@@ -139,30 +135,131 @@ def build_email_html(stores):
     today     = datetime.now()
     month_str = today.strftime("%B")
     date_str  = today.strftime("%B %d, %Y")
+    day_of_month = today.day
 
-    # Calculate group average rating
+    # ── Compute group-level metrics ──────────────────────────────────────────
     ratings = []
     for s in stores:
         try:
             ratings.append(float(s['avg_rating']))
         except:
             pass
-    group_avg = round(sum(ratings) / len(ratings), 1) if ratings else "N/A"
+    group_avg = round(sum(ratings) / len(ratings), 1) if ratings else None
 
-    # Split stores into on track (2+ reviews) and need to get going (0-1 reviews)
-    on_track   = [s for s in stores if s['reviews'].isdigit() and int(s['reviews']) >= 2]
-    need_work  = [s for s in stores if s['reviews'].isdigit() and int(s['reviews']) < 2]
-    on_track  += [s for s in stores if not s['reviews'].isdigit()]
+    numeric_stores = [s for s in stores if s['reviews'].isdigit()]
+    total_reviews  = sum(int(s['reviews']) for s in numeric_stores)
 
+    on_track  = [s for s in numeric_stores if int(s['reviews']) >= 2]
+    need_work = [s for s in numeric_stores if int(s['reviews']) < 2]
+    zero_reviews = [s for s in numeric_stores if int(s['reviews']) == 0]
+
+    # Sort to find top and bottom performers
+    sorted_by_reviews = sorted(numeric_stores, key=lambda s: int(s['reviews']), reverse=True)
+    top_stores  = sorted_by_reviews[:3]   # top 3 by review count
+    zero_stores = [s for s in sorted_by_reviews if int(s['reviews']) == 0]
+
+    # Best rated store (min 1 review)
+    rated_stores = [s for s in stores if s['avg_rating'] not in ('N/A', '') ]
+    try:
+        best_rated = max(rated_stores, key=lambda s: float(s['avg_rating']))
+    except:
+        best_rated = None
+
+    pct_on_track = round(len(on_track) / len(numeric_stores) * 100) if numeric_stores else 0
+
+    # ── Dynamic subject line ─────────────────────────────────────────────────
+    # (used in send_email, returned from this function as a tuple)
+    if group_avg is None:
+        subject = f"Google MTD Review Report — {month_str}"
+    elif group_avg >= 4.5:
+        subject = f"🌟 {group_avg}⭐ Group Rating — Keep It Up! | Google MTD {month_str}"
+    elif group_avg >= 4.0:
+        subject = f"💪 {group_avg}⭐ Group Rating — Push for 4.5! | Google MTD {month_str}"
+    else:
+        subject = f"🚨 {group_avg}⭐ Group Rating — We Need to Rally! | Google MTD {month_str}"
+
+    # ── Dynamic opening ──────────────────────────────────────────────────────
+    if pct_on_track >= 80:
+        opening = f"<p>Good Morning My Peeps! 🎉</p><p>Big shoutout — <strong>{pct_on_track}% of stores are already on track</strong> with 2+ reviews this month. That's the energy we need! Let's close out {month_str} strong. 🚀</p>"
+    elif pct_on_track >= 50:
+        opening = f"<p>Good Morning My Peeps! 👋</p><p>We're making progress — <strong>{pct_on_track}% of stores are on track</strong> with 2+ reviews so far in {month_str}. The other half needs to pick it up — we've still got time, but the clock is ticking. ⏰</p>"
+    else:
+        opening = f"<p>Good Morning My Peeps! 👋</p><p>We need to talk. Only <strong>{pct_on_track}% of stores have 2+ reviews</strong> this month in {month_str}. That is not where we need to be — it's time to get after it. 🔥</p>"
+
+    # ── Dynamic group rating commentary ─────────────────────────────────────
+    if group_avg is None:
+        rating_line = "<p>Group rating data is unavailable this week — please check Widewail directly.</p>"
+    elif group_avg >= 4.7:
+        rating_line = f"<p>Our group rating is sitting at a <strong>{group_avg} ⭐</strong> — that is absolutely elite. Let's protect it and keep pushing! 🏆</p>"
+    elif group_avg >= 4.5:
+        rating_line = f"<p>We're at a <strong>{group_avg} ⭐ group rating</strong> — that's excellent. One more push and we can hit 4.7+. Every 5-star review counts! ⭐</p>"
+    elif group_avg >= 4.2:
+        rating_line = f"<p>Group rating is at <strong>{group_avg} ⭐</strong> — so close to 4.5. A strong week of 5-star reviews could get us there. Don't let up! 💪</p>"
+    elif group_avg >= 4.0:
+        rating_line = f"<p>We're at <strong>{group_avg} ⭐</strong> as a group — right at the 4-star line. We need quality AND quantity. Every perfect experience is a chance to ask for a 5-star review. 🎯</p>"
+    else:
+        rating_line = f"<p>⚠️ Group rating is at <strong>{group_avg} ⭐</strong> — that's below where we need to be. We need more volume AND higher quality reviews to move this number. Let's focus up. 🚨</p>"
+
+    # ── Dynamic review volume commentary ────────────────────────────────────
+    reviews_per_day = round(total_reviews / day_of_month, 1) if day_of_month > 0 else 0
+    volume_line = f"<p>We've collected <strong>{total_reviews} total reviews</strong> across all stores so far in {month_str} ({reviews_per_day}/day pace). "
+    target_mtd  = len(numeric_stores) * 4  # 4 reviews per store as rough monthly target
+    if total_reviews >= target_mtd:
+        volume_line += f"We're ahead of pace toward our group target — keep it rolling! 🟢</p>"
+    elif total_reviews >= target_mtd * 0.7:
+        volume_line += f"We're on pace but need to stay consistent to hit our group target. 🟡</p>"
+    else:
+        volume_line += f"We're behind pace for the month — every store needs to make asking a daily habit. 🔴</p>"
+
+    # ── Top performers shoutout ──────────────────────────────────────────────
+    if top_stores:
+        top_lines = ", ".join([f"<strong>{s['store']}</strong> ({s['reviews']} reviews)" for s in top_stores])
+        top_section = f"<p>🏅 <strong>Leading the pack this month:</strong> {top_lines} — that's how it's done!</p>"
+    else:
+        top_section = ""
+
+    # ── Stores needing help ──────────────────────────────────────────────────
+    if zero_stores:
+        zero_names = ", ".join([f"<strong>{s['store']}</strong>" for s in zero_stores])
+        zero_section = f"<p>🚨 <strong>Zero reviews so far in {month_str}:</strong> {zero_names} — not a single one. This needs to change today. Ask every customer. Every. Single. One.</p>"
+    else:
+        zero_section = ""
+
+    if need_work and not zero_stores:
+        need_names = ", ".join([f"<strong>{s['store']}</strong>" for s in need_work])
+        need_section = f"<p>⚠️ <strong>Under 2 reviews:</strong> {need_names} — you're behind. Time to pick up the pace! 🔥</p>"
+    elif need_work and zero_stores:
+        remaining_need = [s for s in need_work if s not in zero_stores]
+        if remaining_need:
+            need_names = ", ".join([f"<strong>{s['store']}</strong>" for s in remaining_need])
+            need_section = f"<p>⚠️ <strong>Also under 2 reviews:</strong> {need_names} — let's get moving! 🔥</p>"
+        else:
+            need_section = ""
+    else:
+        need_section = f"<p>✅ Every store has at least 2 reviews this month — amazing effort across the board!</p>"
+
+    # ── Best rated store callout ─────────────────────────────────────────────
+    if best_rated:
+        try:
+            br = float(best_rated['avg_rating'])
+            if br >= 4.8:
+                best_rated_section = f"<p>⭐ <strong>{best_rated['store']}</strong> is leading on quality with a <strong>{best_rated['avg_rating']} rating</strong> — that's what great service looks like!</p>"
+            else:
+                best_rated_section = ""
+        except:
+            best_rated_section = ""
+    else:
+        best_rated_section = ""
+
+    # ── Build the store table ────────────────────────────────────────────────
     if stores:
         table_rows = ""
         for s in stores:
             try:
-                r = float(s['avg_rating'])
+                r    = float(s['avg_rating'])
                 star = "⭐⭐⭐⭐⭐" if r >= 4.5 else "⭐⭐⭐⭐" if r >= 4.0 else "⭐⭐⭐" if r >= 3.0 else "⭐⭐"
             except:
                 star = "⭐"
-            # Highlight stores with 0-1 reviews in light red
             try:
                 row_style = "background-color:#fff3f3;" if int(s['reviews']) < 2 else ""
             except:
@@ -189,25 +286,22 @@ def build_email_html(stores):
     else:
         table_html = "<p><em>No store data could be retrieved. Please check Widewail manually.</em></p>"
 
-    # Build shoutout lines
-    need_work_names = ", ".join([s['store'] for s in need_work]) if need_work else None
-    on_track_names  = ", ".join([s['store'] for s in on_track]) if on_track else None
-
-    grind_line = f"<p>To all my homies with 2+ reviews — <strong>you are on track, keep grinding! 💪</strong></p>" if on_track else ""
-    wake_line  = f"<p>⚠️ <strong>{need_work_names}</strong> — it's time to wake up and start grinding out some reviews!!! Leeetttssss gooooooo!!! 🔥</p>" if need_work_names else ""
-
-    return f"""
+    # ── Assemble final HTML ──────────────────────────────────────────────────
+    html = f"""
     <html><body style="font-family:Arial,sans-serif;color:#333;max-width:700px;margin:0 auto">
-        <p>Good Morning My Peeps! 👋</p>
-        <p>Here's your <strong>Google Review snapshot for {month_str} month-to-date</strong> as of <strong>{date_str}</strong>. Every store should be pushing for <strong>4+ reviews</strong> — let's get after it! 🚀</p>
+        {opening}
+
+        <p>Here's your <strong>Google Review snapshot for {month_str} month-to-date</strong> as of <strong>{date_str}</strong>. Every store should be pushing for <strong>4+ reviews</strong> this month — let's get after it! 🚀</p>
 
         {table_html}
 
         <br>
-        <p>We are currently at a <strong>{group_avg} ⭐ group rating</strong> — let's keep fighting to push that number up!</p>
-
-        {grind_line}
-        {wake_line}
+        {rating_line}
+        {volume_line}
+        {top_section}
+        {best_rated_section}
+        {zero_section}
+        {need_section}
 
         <p><strong>Why It Matters:</strong> Google reviews help us attract new customers, improve our local search rankings, and showcase the great service you provide every day.</p>
 
@@ -223,11 +317,13 @@ def build_email_html(stores):
         <p style="font-size:11px;color:#999">Auto-generated from Widewail · {date_str}</p>
     </body></html>"""
 
+    return html, subject
 
-def send_email(html_body):
+
+def send_email(html_body, subject):
     print("Sending email via Gmail SMTP...")
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = "Google - MTD"
+    msg["Subject"] = subject
     msg["From"]    = SMTP_EMAIL
     msg["To"]      = "jcopenhaver@publicstorage.com"
     msg.attach(MIMEText(html_body, "html"))
@@ -238,11 +334,11 @@ def send_email(html_body):
 
 
 def main():
-    token  = get_auth_token()
-    rows   = get_enterprise_reviews(token)
-    stores = parse_stores(rows)
-    html   = build_email_html(stores)
-    send_email(html)
+    token        = get_auth_token()
+    rows         = get_enterprise_reviews(token)
+    stores       = parse_stores(rows)
+    html, subject = build_email_html(stores)
+    send_email(html, subject)
 
 
 if __name__ == "__main__":
