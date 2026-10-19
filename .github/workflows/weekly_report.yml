@@ -4,18 +4,21 @@ on:
   schedule:
     # Every Tuesday at 4:00 AM Pacific (~12:00 UTC)
     - cron: "0 12 * * 2"
-  workflow_dispatch:  # Allows manual trigger for testing
+  workflow_dispatch: # Allows manual trigger for testing
+
+# Lets the keepalive step push a small commit back to the repo
+permissions:
+  contents: write
 
 jobs:
   send-review-report:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -36,10 +39,10 @@ jobs:
 
       - name: Run Widewail scraper and send email
         env:
-          WIDEWAIL_EMAIL:    ${{ secrets.WIDEWAIL_EMAIL }}
+          WIDEWAIL_EMAIL: ${{ secrets.WIDEWAIL_EMAIL }}
           WIDEWAIL_PASSWORD: ${{ secrets.WIDEWAIL_PASSWORD }}
-          SMTP_EMAIL:        ${{ secrets.SMTP_EMAIL }}
-          SMTP_PASSWORD:     ${{ secrets.SMTP_PASSWORD }}
+          SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         run: python widewail_scraper.py
 
       - name: Upload debug screenshot (if exists)
@@ -49,3 +52,17 @@ jobs:
           name: debug-screenshot
           path: /tmp/debug_screenshot.png
           if-no-files-found: ignore
+
+      # Keepalive: GitHub disables scheduled workflows in public repos after
+      # 60 days with no commits. This records the last run date in a small
+      # file and commits it, so the repo always has recent activity.
+      # Runs even if the scraper step fails.
+      - name: Keepalive commit
+        if: always()
+        run: |
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .last_run
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .last_run
+          git commit -m "Keepalive: last run $(date -u +%Y-%m-%d)" || echo "Nothing to commit"
+          git push
